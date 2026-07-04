@@ -104,3 +104,157 @@ if page == "Overview":
 
     st.subheader("Column Summary")
     st.dataframe(
+        pd.DataFrame(
+            {
+                "dtype": df.dtypes.astype(str),
+                "missing_values": df.isna().sum(),
+                "missing_%": (df.isna().mean() * 100).round(2),
+            }
+        ),
+        use_container_width=True,
+    )
+
+# ----------------------------------------------------------------------
+# Page: Exploratory Analysis
+# ----------------------------------------------------------------------
+elif page == "Exploratory Analysis":
+    st.title("Exploratory Data Analysis")
+
+    if region_col and sales_col:
+        st.subheader(f"Sales by {region_col}")
+        region_sales = (
+            df.groupby(region_col)[sales_col].sum().sort_values(ascending=False).head(15)
+        )
+        fig = px.bar(
+            region_sales,
+            x=region_sales.index,
+            y=region_sales.values,
+            labels={"x": region_col, "y": "Total Sales"},
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    if category_col and sales_col:
+        st.subheader(f"Sales by {category_col}")
+        cat_sales = (
+            df.groupby(category_col)[sales_col].sum().sort_values(ascending=False).head(15)
+        )
+        fig2 = px.bar(
+            cat_sales,
+            x=cat_sales.values,
+            y=cat_sales.index,
+            orientation="h",
+            labels={"x": "Total Sales", "y": category_col},
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+
+    if shipping_col and target_col:
+        st.subheader("Late Delivery Risk by Shipping Mode")
+        risk_by_ship = df.groupby(shipping_col)[target_col].mean().sort_values(ascending=False)
+        fig3 = px.bar(
+            risk_by_ship,
+            x=risk_by_ship.index,
+            y=risk_by_ship.values,
+            labels={"x": shipping_col, "y": "Late Delivery Rate"},
+        )
+        st.plotly_chart(fig3, use_container_width=True)
+
+    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+    if len(numeric_cols) > 1:
+        st.subheader("Correlation Heatmap (numeric columns)")
+        sample_cols = numeric_cols[:15]  # keep it readable
+        fig4, ax = plt.subplots(figsize=(10, 8))
+        sns.heatmap(df[sample_cols].corr(), cmap="coolwarm", annot=False, ax=ax)
+        st.pyplot(fig4)
+        plt.close(fig4)
+
+# ----------------------------------------------------------------------
+# Page: Late Delivery Prediction
+# ----------------------------------------------------------------------
+elif page == "Late Delivery Prediction":
+    st.title("Late Delivery Risk Prediction")
+
+    if target_col is None:
+        st.warning(
+            "Could not find a 'Late_delivery_risk' column in this dataset, "
+            "so the prediction demo is unavailable."
+        )
+        st.stop()
+
+    st.write(
+        "This model uses a Random Forest classifier trained on the dataset "
+        "to predict whether an order is at risk of late delivery."
+    )
+
+    # --- Feature selection ---
+    candidate_features = [
+        c
+        for c in [
+            shipping_col,
+            region_col,
+            category_col,
+            sales_col,
+            get_column(df, "Order Item Quantity"),
+            get_column(df, "Order Item Discount Rate"),
+            get_column(df, "Days for shipping (real)"),
+            get_column(df, "Days for shipment (scheduled)"),
+        ]
+        if c is not None
+    ]
+
+    if len(candidate_features) < 2:
+        st.warning("Not enough usable feature columns were found for training.")
+        st.stop()
+
+    model_df = df[candidate_features + [target_col]].dropna().copy()
+
+    # Encode categorical columns
+    encoders = {}
+    for col in model_df.select_dtypes(include="object").columns:
+        le = LabelEncoder()
+        model_df[col] = le.fit_transform(model_df[col].astype(str))
+        encoders[col] = le
+
+    X = model_df[candidate_features]
+    y = model_df[target_col]
+
+    test_size = st.slider("Test set size", 0.1, 0.4, 0.2, 0.05)
+    n_estimators = st.slider("Number of trees (n_estimators)", 50, 150, 100, 25)
+
+    if st.button("Train Model"):
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=42, stratify=y
+        )
+
+        with st.spinner("Training Random Forest model..."):
+            model = RandomForestClassifier(
+                n_estimators=n_estimators, random_state=42, n_jobs=2, max_depth=15
+            )
+            model.fit(X_train, y_train)
+            preds = model.predict(X_test)
+
+        st.success("Model trained successfully!")
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Accuracy", f"{accuracy_score(y_test, preds):.3f}")
+        c2.metric("Precision", f"{precision_score(y_test, preds):.3f}")
+        c3.metric("Recall", f"{recall_score(y_test, preds):.3f}")
+        c4.metric("F1 Score", f"{f1_score(y_test, preds):.3f}")
+
+        st.subheader("Confusion Matrix")
+        cm = confusion_matrix(y_test, preds)
+        fig, ax = plt.subplots()
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
+        ax.set_xlabel("Predicted")
+        ax.set_ylabel("Actual")
+        st.pyplot(fig)
+        plt.close(fig)
+
+        st.subheader("Feature Importance")
+        importance = pd.Series(model.feature_importances_, index=candidate_features).sort_values(
+            ascending=False
+        )
+        fig2 = px.bar(importance, x=importance.values, y=importance.index, orientation="h")
+        st.plotly_chart(fig2, use_container_width=True)
+
+        with st.expander("Full Classification Report"):
+            st.text(classification_report(y_test, preds))
