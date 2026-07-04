@@ -164,7 +164,7 @@ elif page == "Exploratory Analysis":
         sample_cols = numeric_cols[:15]  # keep it readable
         fig4, ax = plt.subplots(figsize=(10, 8))
         sns.heatmap(df[sample_cols].corr(), cmap="coolwarm", annot=False, ax=ax)
-        st.pyplot(fig4)
+         st.pyplot(fig4)
 
 # ----------------------------------------------------------------------
 # Page: Late Delivery Prediction
@@ -217,16 +217,15 @@ elif page == "Late Delivery Prediction":
     y = model_df[target_col]
 
     test_size = st.slider("Test set size", 0.1, 0.4, 0.2, 0.05)
-    n_estimators = st.slider("Number of trees (n_estimators)", 50, 300, 150, 25)
-
+    n_estimators = st.slider("Number of trees (n_estimators)", 50, 150, 100, 25)
+    
     if st.button("Train Model"):
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=42, stratify=y
         )
 
         with st.spinner("Training Random Forest model..."):
-            model = RandomForestClassifier(
-                n_estimators=n_estimators, random_state=42, n_jobs=-1
+           n_estimators=n_estimators, random_state=42, n_jobs=2, max_depth=15
             )
             model.fit(X_train, y_train)
             preds = model.predict(X_test)
@@ -246,6 +245,7 @@ elif page == "Late Delivery Prediction":
         ax.set_xlabel("Predicted")
         ax.set_ylabel("Actual")
         st.pyplot(fig)
+        plt.close(fig)
 
         st.subheader("Feature Importance")
         importance = pd.Series(model.feature_importances_, index=candidate_features).sort_values(
