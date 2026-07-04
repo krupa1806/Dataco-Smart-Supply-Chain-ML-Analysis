@@ -1,0 +1,33 @@
+{
+  "steps": [
+    {
+      "id": "step_1",
+      "name": "Load Data",
+      "activeVersionId": "v1",
+      "versions": [
+        {
+          "id": "v1",
+          "code": "df = pd.read_csv('file.csv')",
+          "tag": "baseline"
+        },
+        {
+          "id": "v2",
+          "code": "df = load_parquet('file.parquet')",
+          "tag": "optimized"
+        }
+      ]
+    },
+    {
+      "id": "step_2",
+      "name": "Clean Data",
+      "activeVersionId": "v1",
+      "versions": [
+        {
+          "id": "v1",
+          "code": "df = df.dropna()\ndf = df.reset_index(drop=True)",
+          "tag": "initial"
+        }
+      ]
+    }
+  ]
+}
